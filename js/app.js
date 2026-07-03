@@ -7,9 +7,18 @@ const state = {
 };
 
 window.addEventListener('load', async () => {
-  initAuth();
   document.getElementById('signInBtn').addEventListener('click', handleSignIn);
   window.addEventListener('popstate', () => { applyRoute({ skipPush: true }); });
+
+  try {
+    initAuth();
+  } catch (err) {
+    // GIS script blocked/failed to load (ad-blocker, privacy browser, flaky
+    // network) — surface this instead of leaving a dead sign-in button with
+    // no explanation. handleSignIn() will retry initAuth() on click.
+    showSigninError(describeAuthError_(err));
+    return;
+  }
 
   if (tryRestoreSession()) {
     await enterApp();
@@ -66,12 +75,26 @@ async function applyRoute() {
 }
 
 async function handleSignIn() {
+  clearSigninError();
   try {
+    if (!tokenClient) initAuth(); // retry in case GIS finished loading after the initial attempt
     await signIn();
     await enterApp();
   } catch (err) {
-    onError(err);
+    console.error(err);
+    showSigninError(describeAuthError_(err));
   }
+}
+
+function showSigninError(msg) {
+  const el = document.getElementById('signinError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function clearSigninError() {
+  const el = document.getElementById('signinError');
+  el.style.display = 'none';
 }
 
 function showScreen(id) {

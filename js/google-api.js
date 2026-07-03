@@ -30,11 +30,54 @@ const EVENT_RANGE_SUFFIX = 'V'; // last column letter for EVENT_FIELDS.length (2
 const TOKEN_STORAGE_KEY = 'eventInviterToken';
 
 function initAuth() {
+  // On some mobile browsers (Brave, Firefox Focus, ad/privacy blockers) the GIS
+  // script at accounts.google.com/gsi/client is blocked outright, or a flaky
+  // connection means it hasn't finished loading yet — `google` stays undefined
+  // and this would otherwise throw, killing the rest of the load handler
+  // (including the signInBtn click listener) with no visible error.
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    throw new Error('GIS_UNAVAILABLE');
+  }
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
     scope: CONFIG.SCOPES,
     callback: () => {} // overridden per-call in requestToken_()
   });
+}
+
+// Instagram/Facebook/Line/WeChat/etc. in-app browsers (WebViews) are blocked by
+// Google's OAuth servers ("Error 403: disallowed_useragent") — Google's own
+// error page there reads like the site is broken rather than explaining why.
+function isInAppBrowser_() {
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|Line\/|MicroMessenger|WeChat|TikTok|Twitter/i.test(ua);
+}
+
+// Turns a GIS error (a plain object like {error, error_description} or
+// {type}, not an Error instance — it has no .message) or a thrown Error into
+// a bilingual string a non-technical user can act on.
+function describeAuthError_(err) {
+  if (isInAppBrowser_()) {
+    return 'گوگل ورود از داخل این اپلیکیشن (اینستاگرام/غیره) را مسدود می‌کند. این صفحه را در مرورگر (کروم/سافاری) باز کنید. ' +
+      '(Google blocks sign-in from inside this app. Open this page in a real browser like Chrome or Safari.)';
+  }
+  if (err && err.message === 'GIS_UNAVAILABLE') {
+    return 'اسکریپت ورود گوگل بارگذاری نشد؛ ممکن است توسط مرورگر یا افزونه‌ای مسدود شده باشد. اتصال اینترنت یا تنظیمات مرورگر را بررسی کنید. ' +
+      '(Google’s sign-in script failed to load — it may be blocked by the browser or an extension/ad-blocker. Check your connection or browser settings.)';
+  }
+  const code = (err && (err.error || err.type)) || '';
+  if (code === 'popup_closed' || code === 'popup_closed_by_user') {
+    return 'پنجره ورود بسته شد. دوباره روی «ورود با گوگل» کلیک کنید. (The sign-in window was closed — click "Sign in with Google" again.)';
+  }
+  if (code === 'popup_failed_to_open') {
+    return 'مرورگر پنجره ورود را مسدود کرد. مسدودکننده پنجره‌های بازشو را غیرفعال کنید و دوباره تلاش کنید. (Your browser blocked the sign-in popup — disable the popup blocker and try again.)';
+  }
+  if (code === 'access_denied') {
+    return 'دسترسی رد شد. برای استفاده از این ابزار باید اجازه دسترسی را تأیید کنید. (Access was denied — you need to approve the permission request to use this tool.)';
+  }
+  if (err && err.message) return err.message;
+  if (code) return code;
+  return 'ورود با گوگل ناموفق بود. دوباره تلاش کنید. (Google sign-in failed. Please try again.)';
 }
 
 function isSignedIn() {
