@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <div id="signinGate" class="signin-gate">
+    <h1>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></h1>
+    <p>با حساب گوگلی که به فایل رویدادها دسترسی دارد وارد شوید.<br><span class="muted en">(Sign in with the Google account that has access to the events spreadsheet.)</span></p>
+    <button class="btn btn-primary" id="signInBtn">ورود با گوگل <span class="en">(Sign in with Google)</span></button>
+  </div>
+
+  <div id="appRoot" style="display:none;">
+    <div class="toolbar">
+      <h1>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></h1>
+      <button class="btn btn-primary" onclick="showForm()">+ رویداد جدید <span class="en">(+ New Event)</span></button>
+    </div>
+
+    <div id="listScreen" class="screen active">
+      <table>
+        <thead>
+          <tr>
+            <th>تاریخ میلادی <span class="en">(Gregorian Date)</span></th>
+            <th>عنوان <span class="en">(Title)</span></th>
+            <th>دستور کار <span class="en">(Agenda)</span></th>
+            <th class="actions">عملیات <span class="en">(Actions)</span></th>
+          </tr>
+        </thead>
+        <tbody id="eventsTableBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state" style="display:none;">هنوز رویدادی وجود ندارد. روی «+ رویداد جدید» کلیک کنید. <span class="en">(No events yet. Click "+ New Event" to add one.)</span></div>
+      <div class="pagination">
+        <button class="btn" id="prevBtn" onclick="goPrev()">&rarr; قبلی <span class="en">(Previous)</span></button>
+        <span class="muted" id="pageLabel"></span>
+        <button class="btn" id="nextBtn" onclick="goNext()">بعدی <span class="en">(Next)</span> &larr;</button>
+      </div>
+
+      <div class="toolbar" style="margin-top:28px;">
+        <h2>مکان‌ها <span class="en">(Locations)</span></h2>
+        <button class="btn btn-primary" onclick="showLocationForm()">+ مکان جدید <span class="en">(+ New Location)</span></button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>برچسب <span class="en">(Label)</span></th>
+            <th>آدرس <span class="en">(Address)</span></th>
+            <th>نقشه گوگل <span class="en">(Google Map URL)</span></th>
+            <th class="actions">عملیات <span class="en">(Actions)</span></th>
+          </tr>
+        </thead>
+        <tbody id="locationsTableBody"></tbody>
+      </table>
+      <div id="locationsEmptyState" class="empty-state" style="display:none;">هنوز مکانی وجود ندارد. <span class="en">(No locations yet.)</span></div>
+    </div>
+
+    <div id="locationFormScreen" class="screen">
+      <h2 id="locationFormTitle">مکان جدید <span class="en">(New Location)</span></h2>
+      <div class="field">
+        <label>برچسب <span class="en">(Label)</span></label>
+        <input type="text" id="loc_label">
+      </div>
+      <div class="field">
+        <label>آدرس <span class="en">(Address)</span></label>
+        <input type="text" id="loc_address">
+      </div>
+      <div class="field">
+        <label>لینک نقشه گوگل <span class="en">(Google Map URL)</span></label>
+        <input type="url" id="loc_mapUrl">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveLocationForm()">ذخیره <span class="en">(Save)</span></button>
+        <button class="btn" onclick="showList()">انصراف <span class="en">(Cancel)</span></button>
+      </div>
+    </div>
+
+    <div id="formScreen" class="screen">
+      <h2 id="formTitle">رویداد جدید <span class="en">(New Event)</span></h2>
+      <div class="field">
+        <label>عنوان <span class="en">(Title)</span></label>
+        <input type="text" id="f_title">
+      </div>
+      <div class="field-group">
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>تاریخ میلادی <span class="en">(Gregorian Date)</span></label>
+            <div class="date-parts">
+              <input type="text" id="f_dateDisplay" readonly placeholder="تاریخ را از تقویم انتخاب کنید (Pick a date from the calendar)">
+              <input type="date" id="f_datePicker" onchange="applyDatePicker()" title="انتخاب از تقویم (Pick from calendar)">
+              <input type="hidden" id="f_dateRaw">
+            </div>
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showGregorian" checked>
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>تاریخ قمری <span class="en">(Hijri Date)</span></label>
+            <input type="text" id="f_hijriDate">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showHijri">
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>تاریخ شمسی <span class="en">(Shamsi Date)</span></label>
+            <input type="text" id="f_shamsiDate">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showShamsi">
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>روز هفته <span class="en">(Day of Week)</span></label>
+            <input type="text" id="f_dayOfWeek">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showDayOfWeek">
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <button type="button" class="btn btn-sm" onclick="calculateAltDates()">محاسبه خودکار <span class="en">(Auto calculate)</span></button>
+          <div class="muted" style="margin-top:4px;">بر اساس تقویم ام‌القری محاسبه می‌شود و ممکن است یک روز با اعلام رسمی رویت هلال تفاوت داشته باشد. <span class="en">(Calculated using the Umm al-Qura calendar; may differ by a day from moon-sighting-based announcements.)</span></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>اذان صبح <span class="en">(Fajr)</span></label>
+            <input type="text" id="f_fajrTime">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showFajr">
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>اذان ظهر <span class="en">(Dhuhr)</span></label>
+            <input type="text" id="f_dhuhrTime">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showDhuhr">
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field date-field-row">
+          <div class="date-field-main">
+            <label>اذان مغرب <span class="en">(Maghrib)</span></label>
+            <input type="text" id="f_maghribTime">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="f_showMaghrib">
+            نمایش در ایمیل <span class="en">(Show in email)</span>
+          </label>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <button type="button" class="btn btn-sm" onclick="calculateAzanTimesUi()">محاسبه خودکار <span class="en">(Auto calculate)</span></button>
+          <div class="muted" style="margin-top:4px;">بر اساس روش تهران (اذان شیعه) و مختصات دانشگاه واترلو محاسبه می‌شود؛ تقریبی است. <span class="en">(Calculated using the Tehran method (Shia azan) for University of Waterloo coordinates; approximate.)</span></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>پس‌زمینه <span class="en">(Background)</span></label>
+        <textarea id="f_background" rows="3"></textarea>
+      </div>
+      <div class="field-group">
+        <div class="field" style="margin-bottom:0;">
+          <label>دستور کار <span class="en">(Agenda)</span></label>
+          <table class="outline-table" style="table-layout:fixed;">
+            <thead>
+              <tr>
+                <th style="width:22%;">زمان <span class="en">(Time)</span></th>
+                <th style="width:42%;">موضوع <span class="en">(Topic)</span></th>
+                <th style="width:22%;">مکان <span class="en">(Location)</span></th>
+                <th style="width:14%;"></th>
+              </tr>
+            </thead>
+            <tbody id="outlineRows"></tbody>
+          </table>
+          <button type="button" class="btn btn-sm" onclick="addOutlineRow()">+ افزودن ردیف <span class="en">(+ Add row)</span></button>
+          <datalist id="locationDatalist"></datalist>
+        </div>
+      </div>
+      <div class="field">
+        <label>یادداشت‌ها <span class="en">(Notes)</span></label>
+        <textarea id="f_notes" rows="3"></textarea>
+      </div>
+      <div class="field-group">
+        <div class="field" style="margin-bottom:0;">
+          <label>لینک‌ها <span class="en">(Links)</span></label>
+          <table class="outline-table">
+            <thead>
+              <tr>
+                <th>متن <span class="en">(Text)</span></th>
+                <th>آدرس <span class="en">(URL)</span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="linkRows"></tbody>
+          </table>
+          <button type="button" class="btn btn-sm" onclick="addLinkRow()">+ افزودن لینک <span class="en">(+ Add link)</span></button>
+        </div>
+      </div>
+      <div class="field">
+        <label>گیرندگان — ایمیل‌ها با کاما جدا شوند <span class="en">(Receivers, comma-separated emails)</span></label>
+        <input type="text" id="f_receivers">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveForm()">ذخیره <span class="en">(Save)</span></button>
+        <button class="btn" onclick="saveAndCompile()">آماده‌سازی <span class="en">(Compile)</span></button>
+        <button class="btn" onclick="showList()">انصراف <span class="en">(Cancel)</span></button>
+      </div>
+    </div>
+
+    <div id="compileScreen" class="screen">
+      <h2>ایمیل آماده‌شده <span class="en">(Compiled Email)</span></h2>
+      <div class="compile-meta">
+        <div><strong>به <span class="en">(To):</span></strong> <span id="c_to"></span></div>
+        <div><strong>موضوع <span class="en">(Subject):</span></strong> <span id="c_subject"></span></div>
+      </div>
+      <iframe class="preview-frame" id="previewFrame"></iframe>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="createDraft()">ساخت پیش‌نویس جیمیل <span class="en">(Create Gmail Draft)</span></button>
+        <button class="btn" onclick="copyHtml()">کپی <span class="en">HTML (Copy HTML)</span></button>
+        <button class="btn" onclick="showList()">بازگشت به فهرست <span class="en">(Back to list)</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/google-api.js"></script>
+  <script src="js/email-template.js"></script>
+  <script src="js/prayer-times.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
