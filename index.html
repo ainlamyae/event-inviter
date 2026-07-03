@@ -3,7 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></title>
+  <title>دعوت‌نامه رویداد (Event Inviter)</title>
+  <meta name="description" content="Google Sheets + Gmail powered event invitations — create, edit, and email community event announcements.">
+  <meta name="theme-color" content="#1f4e78">
+
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="دعوت‌نامه رویداد (Event Inviter)">
+  <meta property="og:description" content="Google Sheets + Gmail powered event invitations — create, edit, and email community event announcements.">
+  <meta property="og:image" content="https://ainlamyae.github.io/event-inviter/assets/og-image.png">
+  <meta property="og:url" content="https://ainlamyae.github.io/event-inviter/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="دعوت‌نامه رویداد (Event Inviter)">
+  <meta name="twitter:description" content="Google Sheets + Gmail powered event invitations — create, edit, and email community event announcements.">
+  <meta name="twitter:image" content="https://ainlamyae.github.io/event-inviter/assets/og-image.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,6 +28,17 @@
 </head>
 <body>
 
+  <header class="site-header">
+    <div class="site-header-brand" onclick="showList()">
+      <img src="assets/favicon.png" alt="" width="28" height="28">
+      <span>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></span>
+    </div>
+    <nav class="site-header-nav">
+      <a onclick="goToSection('eventListSection')">فهرست رویدادها <span class="en">(Event List)</span></a>
+      <a onclick="goToSection('locationListSection')">فهرست مکان‌ها <span class="en">(Location list)</span></a>
+    </nav>
+  </header>
+
   <div id="signinGate" class="signin-gate">
     <h1>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></h1>
     <p>با حساب گوگلی که به فایل رویدادها دسترسی دارد وارد شوید.<br><span class="muted en">(Sign in with the Google account that has access to the events spreadsheet.)</span></p>
@@ -19,46 +46,72 @@
   </div>
 
   <div id="appRoot" style="display:none;">
-    <div class="toolbar">
-      <h1>دعوت‌نامه رویداد <span class="en">(Event Inviter)</span></h1>
-      <button class="btn btn-primary" onclick="showForm()">+ رویداد جدید <span class="en">(+ New Event)</span></button>
-    </div>
-
     <div id="listScreen" class="screen active">
-      <table>
-        <thead>
-          <tr>
-            <th>تاریخ میلادی <span class="en">(Gregorian Date)</span></th>
-            <th>عنوان <span class="en">(Title)</span></th>
-            <th>دستور کار <span class="en">(Agenda)</span></th>
-            <th class="actions">عملیات <span class="en">(Actions)</span></th>
-          </tr>
-        </thead>
-        <tbody id="eventsTableBody"></tbody>
-      </table>
-      <div id="emptyState" class="empty-state" style="display:none;">هنوز رویدادی وجود ندارد. روی «+ رویداد جدید» کلیک کنید. <span class="en">(No events yet. Click "+ New Event" to add one.)</span></div>
-      <div class="pagination">
-        <button class="btn" id="prevBtn" onclick="goPrev()">&rarr; قبلی <span class="en">(Previous)</span></button>
-        <span class="muted" id="pageLabel"></span>
-        <button class="btn" id="nextBtn" onclick="goNext()">بعدی <span class="en">(Next)</span> &larr;</button>
+      <div class="field-group" id="eventListSection">
+        <div class="toolbar">
+          <h2>فهرست رویدادها <span class="en">(Event List)</span></h2>
+          <button class="btn btn-primary" onclick="showForm()">+ رویداد جدید <span class="en">(+ New Event)</span></button>
+        </div>
+        <div class="field">
+          <label>جستجو و فیلتر <span class="en">(Search &amp; Filter)</span></label>
+          <div class="date-parts">
+            <input type="text" id="f_searchQuery" placeholder="جستجو در عنوان یا دستور کار (Search title/agenda)" oninput="onFilterChange()" style="flex:1;">
+            <input type="date" id="f_searchDate" onchange="onFilterChange()" title="فیلتر بر اساس تاریخ (Filter by date)">
+            <button type="button" class="btn btn-sm" onclick="clearFilters()">پاک کردن <span class="en">(Clear)</span></button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>تاریخ میلادی <span class="en">(Gregorian Date)</span></th>
+                <th>عنوان <span class="en">(Title)</span></th>
+                <th class="actions">عملیات <span class="en">(Actions)</span></th>
+              </tr>
+            </thead>
+            <tbody id="eventsTableBody"></tbody>
+          </table>
+        </div>
+        <div id="emptyState" class="empty-state" style="display:none;">هنوز رویدادی وجود ندارد. روی «+ رویداد جدید» کلیک کنید. <span class="en">(No events yet. Click "+ New Event" to add one.)</span></div>
+        <div class="pagination">
+          <button class="btn" id="prevBtn" onclick="goPrev()">&rarr; قبلی <span class="en">(Previous)</span></button>
+          <span class="muted" id="pageLabel"></span>
+          <button class="btn" id="nextBtn" onclick="goNext()">بعدی <span class="en">(Next)</span> &larr;</button>
+        </div>
       </div>
 
-      <div class="toolbar" style="margin-top:28px;">
-        <h2>مکان‌ها <span class="en">(Locations)</span></h2>
-        <button class="btn btn-primary" onclick="showLocationForm()">+ مکان جدید <span class="en">(+ New Location)</span></button>
+      <div class="field-group" id="locationListSection">
+        <div class="toolbar">
+          <h2>فهرست مکان‌ها <span class="en">(Location list)</span></h2>
+          <button class="btn btn-primary" onclick="showLocationForm()">+ مکان جدید <span class="en">(+ New Location)</span></button>
+        </div>
+        <div class="field">
+          <label>جستجو <span class="en">(Search)</span></label>
+          <div class="date-parts">
+            <input type="text" id="f_locationSearchQuery" placeholder="جستجو در برچسب یا آدرس (Search label/address)" oninput="onLocationFilterChange()" style="flex:1;">
+            <button type="button" class="btn btn-sm" onclick="clearLocationFilters()">پاک کردن <span class="en">(Clear)</span></button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>برچسب <span class="en">(Label)</span></th>
+                <th>آدرس <span class="en">(Address)</span></th>
+                <th>نقشه گوگل <span class="en">(Google Map URL)</span></th>
+                <th class="actions">عملیات <span class="en">(Actions)</span></th>
+              </tr>
+            </thead>
+            <tbody id="locationsTableBody"></tbody>
+          </table>
+        </div>
+        <div id="locationsEmptyState" class="empty-state" style="display:none;">هنوز مکانی وجود ندارد. <span class="en">(No locations yet.)</span></div>
+        <div class="pagination">
+          <button class="btn" id="locPrevBtn" onclick="locGoPrev()">&rarr; قبلی <span class="en">(Previous)</span></button>
+          <span class="muted" id="locationPageLabel"></span>
+          <button class="btn" id="locNextBtn" onclick="locGoNext()">بعدی <span class="en">(Next)</span> &larr;</button>
+        </div>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>برچسب <span class="en">(Label)</span></th>
-            <th>آدرس <span class="en">(Address)</span></th>
-            <th>نقشه گوگل <span class="en">(Google Map URL)</span></th>
-            <th class="actions">عملیات <span class="en">(Actions)</span></th>
-          </tr>
-        </thead>
-        <tbody id="locationsTableBody"></tbody>
-      </table>
-      <div id="locationsEmptyState" class="empty-state" style="display:none;">هنوز مکانی وجود ندارد. <span class="en">(No locations yet.)</span></div>
     </div>
 
     <div id="locationFormScreen" class="screen">
@@ -72,7 +125,7 @@
         <input type="text" id="loc_address">
       </div>
       <div class="field">
-        <label>لینک نقشه گوگل <span class="en">(Google Map URL)</span></label>
+        <label>پیوند نقشه گوگل <span class="en">(Google Map URL)</span></label>
         <input type="url" id="loc_mapUrl">
       </div>
       <div class="form-actions">
@@ -86,6 +139,10 @@
       <div class="field">
         <label>عنوان <span class="en">(Title)</span></label>
         <input type="text" id="f_title">
+      </div>
+      <div class="field">
+        <label>نام فرستنده <span class="en">(Sender Name)</span></label>
+        <input type="text" id="f_senderName" placeholder="مثلاً: جلسه قرآن دانشگاه واترلو (University of Waterloo Quran Session)">
       </div>
       <div class="field-group">
         <div class="field date-field-row">
@@ -174,13 +231,13 @@
         </div>
       </div>
       <div class="field">
-        <label>پس‌زمینه <span class="en">(Background)</span></label>
+        <label>مقدمه <span class="en">(Introduction)</span></label>
         <textarea id="f_background" rows="3"></textarea>
       </div>
       <div class="field-group">
         <div class="field" style="margin-bottom:0;">
           <label>دستور کار <span class="en">(Agenda)</span></label>
-          <table class="outline-table" style="table-layout:fixed;">
+          <table class="outline-table outline-table-fixed">
             <thead>
               <tr>
                 <th style="width:22%;">زمان <span class="en">(Time)</span></th>
@@ -196,12 +253,27 @@
         </div>
       </div>
       <div class="field">
-        <label>یادداشت‌ها <span class="en">(Notes)</span></label>
-        <textarea id="f_notes" rows="3"></textarea>
+        <label>سخن پایانی <span class="en">(Closing Remarks)</span></label>
+        <textarea id="f_closing" rows="3"></textarea>
       </div>
       <div class="field-group">
         <div class="field" style="margin-bottom:0;">
-          <label>لینک‌ها <span class="en">(Links)</span></label>
+          <label>توصیه‌ها <span class="en">(Recommendations)</span></label>
+          <table class="outline-table">
+            <thead>
+              <tr>
+                <th>متن <span class="en">(Text)</span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="notesRows"></tbody>
+          </table>
+          <button type="button" class="btn btn-sm" onclick="addNotesRow()">+ افزودن توصیه <span class="en">(+ Add recommendation)</span></button>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field" style="margin-bottom:0;">
+          <label>پیوندها <span class="en">(Links)</span></label>
           <table class="outline-table">
             <thead>
               <tr>
@@ -212,7 +284,7 @@
             </thead>
             <tbody id="linkRows"></tbody>
           </table>
-          <button type="button" class="btn btn-sm" onclick="addLinkRow()">+ افزودن لینک <span class="en">(+ Add link)</span></button>
+          <button type="button" class="btn btn-sm" onclick="addLinkRow()">+ افزودن پیوند <span class="en">(+ Add link)</span></button>
         </div>
       </div>
       <div class="field">
@@ -235,18 +307,26 @@
       <iframe class="preview-frame" id="previewFrame"></iframe>
       <div class="form-actions">
         <button class="btn btn-primary" onclick="createDraft()">ساخت پیش‌نویس جیمیل <span class="en">(Create Gmail Draft)</span></button>
+        <button class="btn btn-danger" onclick="sendDirectly()">ارسال مستقیم <span class="en">(Send Directly)</span></button>
         <button class="btn" onclick="copyHtml()">کپی <span class="en">HTML (Copy HTML)</span></button>
+        <button class="btn" onclick="editEvent(state.activeRow)">ویرایش اطلاعات <span class="en">(Edit information)</span></button>
         <button class="btn" onclick="showList()">بازگشت به فهرست <span class="en">(Back to list)</span></button>
       </div>
+      <div class="compile-meta" style="margin-top:10px; margin-bottom:0;">اگر پس از ساخت پیش‌نویس، «افزودن به تقویم» نمایش داده نشد، از «ارسال مستقیم» استفاده کنید. <span class="en">(If "Add to calendar" doesn't appear after sending a draft normally, use "Send Directly" instead.)</span></div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
+  <footer dir="ltr" style="text-align:center; padding:16px 0 4px; font-size:12px; color:#666;">
+    © 2026 All rights reserved. • Designed &amp; Developed by
+    <a href="https://ainlamyae.github.io/" target="_blank" rel="noopener" style="color:#1f4e78;">ALI</a>
+  </footer>
+
   <script src="js/config.js"></script>
   <script src="js/google-api.js"></script>
-  <script src="js/email-template.js"></script>
   <script src="js/prayer-times.js"></script>
+  <script src="js/email-template.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

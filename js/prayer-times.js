@@ -57,6 +57,27 @@ function toPersianDigits_(str) {
   return str.replace(/[0-9]/g, (d) => PERSIAN_DIGITS[Number(d)]);
 }
 
+// Reverse of toPersianDigits_ — needed since users may type Agenda times in
+// Persian numerals; parsing logic (e.g. finding the earliest Agenda time)
+// normalizes to Latin digits first so the regex still matches either way.
+function fromPersianDigits_(str) {
+  return str.replace(/[۰-۹]/g, (d) => String(PERSIAN_DIGITS.indexOf(d)));
+}
+
+// Shared with app.js (form display) and email-template.js (compiled email) —
+// lives here, alongside toPersianDigits_, so both load after it regardless of
+// script order.
+const GREGORIAN_MONTHS_FA = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'می', 'ژوئن', 'جولای', 'آگوست', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
+const GREGORIAN_MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// e.g. "۳ جولای (July) ۲۰۲۶" — day-month-year order, matching Hijri/Shamsi.
+function formatGregorianDisplay(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return toPersianDigits_(String(d)) + ' ' + GREGORIAN_MONTHS_FA[m - 1] +
+    ' (' + GREGORIAN_MONTHS_EN[m - 1] + ') ' + toPersianDigits_(String(y));
+}
+
 function formatHours_(hours) {
   hours = fixHour(hours);
   const h = Math.floor(hours);

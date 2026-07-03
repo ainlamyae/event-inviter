@@ -15,7 +15,8 @@ const EVENT_FIELDS = [
   'hijriDate', 'shamsiDate', 'dayOfWeek',
   'fajrTime', 'dhuhrTime', 'maghribTime',
   'showGregorianInEmail', 'showHijriInEmail', 'showShamsiInEmail', 'showDayOfWeekInEmail',
-  'showFajrInEmail', 'showDhuhrInEmail', 'showMaghribInEmail'
+  'showFajrInEmail', 'showDhuhrInEmail', 'showMaghribInEmail',
+  'senderName', 'closing'
 ];
 // showGregorianInEmail defaults to true (preserves the original always-shown
 // behavior for rows saved before this column existed); the others default to
@@ -25,7 +26,7 @@ const BOOLEAN_FIELDS_DEFAULT_FALSE = [
   'showHijriInEmail', 'showShamsiInEmail', 'showDayOfWeekInEmail',
   'showFajrInEmail', 'showDhuhrInEmail', 'showMaghribInEmail'
 ];
-const EVENT_RANGE_SUFFIX = 'T'; // last column letter for EVENT_FIELDS.length (20 -> T)
+const EVENT_RANGE_SUFFIX = 'V'; // last column letter for EVENT_FIELDS.length (22 -> V)
 const TOKEN_STORAGE_KEY = 'eventInviterToken';
 
 function initAuth() {
@@ -185,12 +186,22 @@ async function getAllEvents() {
   return events;
 }
 
-async function getEventsPage(pageIndex) {
-  const all = await getAllEvents();
+async function getEventsPage(pageIndex, filters) {
+  filters = filters || {};
+  let all = await getAllEvents();
   all.sort((a, b) => {
     if (a.date === b.date) return 0;
     return a.date < b.date ? 1 : -1;
   });
+  if (filters.date) {
+    all = all.filter((ev) => ev.date === filters.date);
+  }
+  if (filters.query) {
+    const q = filters.query.toLowerCase();
+    all = all.filter((ev) =>
+      (ev.title || '').toLowerCase().includes(q) || (ev.outline || '').toLowerCase().includes(q)
+    );
+  }
   const start = pageIndex * CONFIG.PAGE_SIZE;
   return {
     events: all.slice(start, start + CONFIG.PAGE_SIZE),
@@ -248,6 +259,28 @@ async function getLocations() {
     locations.push(rowToLocation(row, i + 2));
   });
   return locations;
+}
+
+// Paginated + filterable view of getLocations(), for the Location List UI —
+// getLocations() itself stays unpaginated since the Outline location-picker
+// and main-location detection need the full list.
+async function getLocationsPage(pageIndex, filters) {
+  filters = filters || {};
+  let all = await getLocations();
+  if (filters.query) {
+    const q = filters.query.toLowerCase();
+    all = all.filter((loc) =>
+      (loc.label || '').toLowerCase().includes(q) || (loc.address || '').toLowerCase().includes(q)
+    );
+  }
+  const start = pageIndex * CONFIG.PAGE_SIZE;
+  return {
+    locations: all.slice(start, start + CONFIG.PAGE_SIZE),
+    pageIndex,
+    hasNext: start + CONFIG.PAGE_SIZE < all.length,
+    hasPrev: pageIndex > 0,
+    totalCount: all.length
+  };
 }
 
 async function getLocation(rowNumber) {
@@ -310,11 +343,66 @@ function findMentionedLocations(text, locations) {
   return locations.filter((loc) => loc.label && text.indexOf(loc.label) !== -1);
 }
 
+// Pulls the "(Location)" part off the end of each Agenda line (matching how
+// app.js's serializeOutline writes "{time} - {topic} ({location})") and
+// returns them in order, one per line that has one.
+function extractOutlineLocations_(outline) {
+  if (!outline) return [];
+  return outline
+    .split(/\n+/)
+    .map((line) => {
+      const m = /\(([^)]+)\)\s*$/.exec(line.trim());
+      return m ? m[1].trim() : '';
+    })
+    .filter(Boolean);
+}
+
+// The event's "main" location is whichever Location is mentioned most often
+// across the Agenda rows — no separate field to maintain.
+function findMainLocation_(outline, locations) {
+  const counts = {};
+  extractOutlineLocations_(outline).forEach((label) => { counts[label] = (counts[label] || 0) + 1; });
+  let bestLabel = null;
+  let bestCount = 0;
+  Object.keys(counts).forEach((label) => {
+    if (counts[label] > bestCount) { bestLabel = label; bestCount = counts[label]; }
+  });
+  return bestLabel ? locations.find((loc) => loc.label === bestLabel) || null : null;
+}
+
+// The earliest "HH:MM" that starts any Agenda line — the event's start time.
+function findEarliestOutlineTime_(outline) {
+  if (!outline) return null;
+  const times = outline
+    .split(/\n+/)
+    .map((line) => /^(\d{1,2}):(\d{2})/.exec(fromPersianDigits_(line.trim())))
+    .filter(Boolean)
+    .map((m) => ({ text: m[0], minutes: (+m[1]) * 60 + (+m[2]) }));
+  if (!times.length) return null;
+  return times.reduce((min, t) => (t.minutes < min.minutes ? t : min)).text;
+}
+
+// e.g. "جلسه هفتگی قرآن (Weekly Quran Session) — 19:45 — MC 2018" so the
+// time/location are visible in the inbox without opening the email.
+function buildSubject_(event, mainLoc) {
+  const parts = [event.title];
+  const earliestTime = findEarliestOutlineTime_(event.outline);
+  if (earliestTime) parts.push(earliestTime);
+  if (mainLoc) parts.push(mainLoc.label);
+  return parts.join(' — ');
+}
+
 async function compileEmail(rowNumber) {
   const event = await getEvent(rowNumber);
   const locations = await getLocations();
   const seen = {};
   const mentionedLocations = [];
+
+  // The most-repeated location in the Agenda always leads the list, even if
+  // it's only mentioned there and not in Notes/Background.
+  const mainLoc = findMainLocation_(event.outline, locations);
+  if (mainLoc) { seen[mainLoc.label] = true; mentionedLocations.push(mainLoc); }
+
   [event.outline, event.notes, event.background].forEach((text) => {
     findMentionedLocations(text, locations).forEach((loc) => {
       if (!seen[loc.label]) { seen[loc.label] = true; mentionedLocations.push(loc); }
@@ -322,7 +410,19 @@ async function compileEmail(rowNumber) {
   });
   const rtl = isRtl(event.title) || isRtl(event.outline) || isRtl(event.background);
   const html = buildEmailHtml(event, mentionedLocations, rtl);
-  return { subject: event.title, to: event.receivers, html };
+  const organizerEmail = await getUserEmail_();
+  const ics = buildIcsContent(event, mentionedLocations, organizerEmail);
+  return { subject: buildSubject_(event, mainLoc), to: event.receivers, html, ics };
+}
+
+// The authenticated user's own address, used as the invite's ORGANIZER.
+async function getUserEmail_() {
+  try {
+    const data = await apiFetch('https://gmail.googleapis.com/gmail/v1/users/me/profile');
+    return data.emailAddress || null;
+  } catch (e) {
+    return null; // compile/preview still works, just without an ORGANIZER line
+  }
 }
 
 // ---- Gmail draft (raw RFC 2822 MIME message, per Gmail API's `raw` field) ----
@@ -349,27 +449,73 @@ function encodeMimeWord_(text) {
   return '=?UTF-8?B?' + utf8ToBase64_(text) + '?=';
 }
 
-function buildMimeMessage_(to, subject, htmlBody) {
+// Attaches the .ics as a second MIME part when present, so Gmail/Apple Mail/
+// Outlook recognize the message as a calendar invite and offer "Add to
+// calendar" instead of treating it as plain HTML.
+function buildMimeMessage_(to, subject, htmlBody, icsContent) {
+  const boundary = '----EventInviterBoundary';
   const headers = [
     'To: ' + to,
     'Subject: ' + encodeMimeWord_(subject || '(no subject)'),
     'MIME-Version: 1.0',
-    'Content-Type: text/html; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64'
+    'Content-Type: multipart/mixed; boundary="' + boundary + '"'
   ];
-  return headers.join('\r\n') + '\r\n\r\n' + wrapBase64_(utf8ToBase64_(htmlBody));
+
+  const htmlPart = [
+    '--' + boundary,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64_(utf8ToBase64_(htmlBody))
+  ].join('\r\n');
+
+  // No Content-Disposition here on purpose: marking it "attachment" is what
+  // makes Gmail/Apple Mail/Outlook show a plain downloadable file instead of
+  // recognizing the message as an invitation and rendering the event/RSVP UI.
+  const icsPart = icsContent ? [
+    '--' + boundary,
+    'Content-Type: text/calendar; charset="UTF-8"; method=REQUEST; name="invite.ics"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64_(utf8ToBase64_(icsContent))
+  ].join('\r\n') : '';
+
+  return headers.join('\r\n') + '\r\n\r\n' + htmlPart + '\r\n' +
+    (icsPart ? icsPart + '\r\n' : '') + '--' + boundary + '--';
 }
 
-async function createGmailDraft(rowNumber) {
+async function buildRawMessage_(rowNumber) {
   const compiled = await compileEmail(rowNumber);
   if (!compiled.to) {
     throw new Error('This event has no Receivers set — add at least one email address first.');
   }
-  const raw = base64ToBase64Url_(utf8ToBase64_(buildMimeMessage_(compiled.to, compiled.subject, compiled.html)));
+  return base64ToBase64Url_(utf8ToBase64_(buildMimeMessage_(compiled.to, compiled.subject, compiled.html, compiled.ics)));
+}
+
+async function createGmailDraft(rowNumber) {
+  const raw = await buildRawMessage_(rowNumber);
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: { raw } })
+  });
+  if (!res.ok) {
+    throw new Error('Gmail API error ' + res.status + ': ' + (await res.text()));
+  }
+}
+
+// Sends immediately via the Gmail API (bypassing Gmail's compose/edit UI
+// entirely), so the exact MIME structure we built — including the
+// text/calendar part needed for "Add to calendar" recognition — reaches the
+// recipient unmodified. Drafts opened and sent through Gmail's own compose
+// window don't reliably preserve that part since the compose editor doesn't
+// have a concept of it.
+async function sendGmailMessage(rowNumber) {
+  const raw = await buildRawMessage_(rowNumber);
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw })
   });
   if (!res.ok) {
     throw new Error('Gmail API error ' + res.status + ': ' + (await res.text()));

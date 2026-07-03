@@ -1,8 +1,9 @@
 // App state, screen switching, and wiring the UI to google-api.js.
 
 const state = {
-  pageIndex: 0, activeRow: null, locations: [], compiledHtml: '', outlineRows: [], linkRows: [],
-  activeLocationRow: null
+  pageIndex: 0, activeRow: null, locations: [], compiledHtml: '', outlineRows: [], linkRows: [], notesRows: [],
+  activeLocationRow: null, filters: { query: '', date: '' },
+  locationPageIndex: 0, locationFilters: { query: '' }
 };
 
 window.addEventListener('load', async () => {
@@ -85,6 +86,14 @@ async function showList(opts) {
   await loadLocationsList();
 }
 
+// Used by the top nav links — jumps to the list screen, then scrolls to the
+// Event List or Location List section within it.
+async function goToSection(sectionId) {
+  await showList();
+  const el = document.getElementById(sectionId);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -108,11 +117,26 @@ function escapeHtmlClient(text) {
 async function loadPage(pageIndex, opts) {
   if (!(opts && opts.skipPush)) setRouteUrl({ view: 'list', page: pageIndex });
   try {
-    const data = await getEventsPage(pageIndex);
+    const data = await getEventsPage(pageIndex, state.filters);
     renderList(data);
   } catch (err) {
     onError(err);
   }
+}
+
+// Re-reads the search box / date filter and reloads the list from page 0.
+function onFilterChange() {
+  state.filters.query = document.getElementById('f_searchQuery').value;
+  state.filters.date = document.getElementById('f_searchDate').value;
+  loadPage(0);
+}
+
+function clearFilters() {
+  document.getElementById('f_searchQuery').value = '';
+  document.getElementById('f_searchDate').value = '';
+  state.filters.query = '';
+  state.filters.date = '';
+  loadPage(0);
 }
 
 function renderList(data) {
@@ -122,11 +146,9 @@ function renderList(data) {
   document.getElementById('emptyState').style.display = data.events.length ? 'none' : 'block';
   data.events.forEach((ev) => {
     const tr = document.createElement('tr');
-    const firstLine = (ev.outline || '').split('\n')[0];
     tr.innerHTML =
       '<td>' + escapeHtmlClient(ev.date) + '</td>' +
       '<td>' + escapeHtmlClient(ev.title) + '</td>' +
-      '<td>' + escapeHtmlClient(firstLine) + '</td>' +
       '<td class="actions">' +
         '<button class="btn btn-sm" onclick="editEvent(' + ev.rowNumber + ')">ویرایش (Edit)</button>' +
         '<button class="btn btn-sm" onclick="duplicateEventUi(' + ev.rowNumber + ')">تکثیر (Duplicate)</button>' +
@@ -157,20 +179,36 @@ async function deleteEventUi(rowNumber) {
 
 // ---- Locations list (shown under the events list) ----
 
-async function loadLocationsList() {
+async function loadLocationsList(pageIndex) {
+  if (typeof pageIndex === 'number') state.locationPageIndex = pageIndex;
   try {
-    const locations = await getLocations();
-    renderLocationsList(locations);
+    const data = await getLocationsPage(state.locationPageIndex, state.locationFilters);
+    renderLocationsList(data);
   } catch (err) {
     onError(err);
   }
 }
 
-function renderLocationsList(locations) {
+function locGoPrev() { if (state.locationPageIndex > 0) loadLocationsList(state.locationPageIndex - 1); }
+function locGoNext() { loadLocationsList(state.locationPageIndex + 1); }
+
+function onLocationFilterChange() {
+  state.locationFilters.query = document.getElementById('f_locationSearchQuery').value;
+  loadLocationsList(0);
+}
+
+function clearLocationFilters() {
+  document.getElementById('f_locationSearchQuery').value = '';
+  state.locationFilters.query = '';
+  loadLocationsList(0);
+}
+
+function renderLocationsList(data) {
+  state.locationPageIndex = data.pageIndex;
   const tbody = document.getElementById('locationsTableBody');
   tbody.innerHTML = '';
-  document.getElementById('locationsEmptyState').style.display = locations.length ? 'none' : 'block';
-  locations.forEach((loc) => {
+  document.getElementById('locationsEmptyState').style.display = data.locations.length ? 'none' : 'block';
+  data.locations.forEach((loc) => {
     const tr = document.createElement('tr');
     const mapCell = loc.mapUrl
       ? '<a href="' + escapeHtmlClient(loc.mapUrl) + '" target="_blank" rel="noopener">' + escapeHtmlClient(loc.mapUrl) + '</a>'
@@ -186,6 +224,10 @@ function renderLocationsList(locations) {
       '</td>';
     tbody.appendChild(tr);
   });
+  document.getElementById('locationPageLabel').textContent =
+    'صفحه ' + (data.pageIndex + 1) + ' · ' + data.totalCount + ' مکان (Page ' + (data.pageIndex + 1) + ' · ' + data.totalCount + ' locations)';
+  document.getElementById('locPrevBtn').disabled = !data.hasPrev;
+  document.getElementById('locNextBtn').disabled = !data.hasNext;
 }
 
 function invalidateLocationsCache() {
@@ -292,7 +334,7 @@ function parseOutline(text) {
     .map((line) => line.trim().replace(/^📌\s*/, ''))
     .filter(Boolean)
     .map((line) => {
-      const m = /^(.*?)\s-\s(.*?)(?:\s\(([^)]+)\))?$/.exec(line);
+      const m = /^(.*?)\s[-—]\s(.*?)(?:\s\(([^)]+)\))?$/.exec(line);
       if (m) {
         return { time: m[1].trim(), topic: m[2].trim(), location: (m[3] || '').trim() };
       }
@@ -305,7 +347,7 @@ function serializeOutline(rows) {
     .filter((r) => r.time || r.topic || r.location)
     .map((r) => {
       let line = '';
-      if (r.time) line += r.time + ' - ';
+      if (r.time) line += r.time + ' — ';
       line += r.topic || '';
       if (r.location) line += ' (' + r.location + ')';
       return line;
@@ -423,6 +465,56 @@ function removeLinkRow(index) {
   renderLinkRows();
 }
 
+// ---- Recommendations: one text item per row, serialized one per line ----
+// (rendered with a bullet per line in the compiled email).
+
+function parseRecommendations(text) {
+  if (!text) return [];
+  return text.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => ({ text: line }));
+}
+
+function serializeRecommendations(rows) {
+  return rows.map((r) => r.text || '').filter(Boolean).join('\n');
+}
+
+function renderNotesRows() {
+  const container = document.getElementById('notesRows');
+  container.innerHTML = '';
+  state.notesRows.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" value="' + escapeHtmlClient(row.text) + '" oninput="updateNotesField(' + i + ',this.value)"></td>' +
+      '<td class="outline-row-actions">' +
+        '<button type="button" class="btn btn-sm" onclick="moveNotesRow(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + '>&uarr;</button>' +
+        '<button type="button" class="btn btn-sm" onclick="moveNotesRow(' + i + ',1)"' + (i === state.notesRows.length - 1 ? ' disabled' : '') + '>&darr;</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" onclick="removeNotesRow(' + i + ')">&times;</button>' +
+      '</td>';
+    container.appendChild(tr);
+  });
+}
+
+function updateNotesField(index, value) {
+  state.notesRows[index].text = value;
+}
+
+function addNotesRow() {
+  state.notesRows.push({ text: '' });
+  renderNotesRows();
+}
+
+function moveNotesRow(index, delta) {
+  const newIndex = index + delta;
+  if (newIndex < 0 || newIndex >= state.notesRows.length) return;
+  const rows = state.notesRows;
+  [rows[index], rows[newIndex]] = [rows[newIndex], rows[index]];
+  renderNotesRows();
+}
+
+function removeNotesRow(index) {
+  state.notesRows.splice(index, 1);
+  renderNotesRows();
+}
+
 // Only Fajr/Dhuhr/Maghrib get their own azan — Shia practice combines Asr into
 // the Dhuhr azan and Isha into the Maghrib azan.
 const AZAN_FIELDS = ['fajrTime', 'dhuhrTime', 'maghribTime'];
@@ -431,17 +523,6 @@ const AZAN_CHECKBOX_IDS = ['f_showFajr', 'f_showDhuhr', 'f_showMaghrib'];
 // The Gregorian date is entered as separate Day / Month (word) / Year fields
 // (fewer transposition mistakes than a single numeric date field) and
 // combined into a 'YYYY-MM-DD' string only when read or saved.
-const GREGORIAN_MONTHS_FA = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'می', 'ژوئن', 'جولای', 'آگوست', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
-const GREGORIAN_MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-// e.g. "۳ جولای (July) ۲۰۲۶" — day-month-year order, matching Hijri/Shamsi.
-function formatGregorianDisplay(dateStr) {
-  if (!dateStr) return '';
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return toPersianDigits_(String(d)) + ' ' + GREGORIAN_MONTHS_FA[m - 1] +
-    ' (' + GREGORIAN_MONTHS_EN[m - 1] + ') ' + toPersianDigits_(String(y));
-}
-
 // f_dateRaw (hidden) is the source of truth ('YYYY-MM-DD'); f_dateDisplay and
 // f_datePicker are just views of it, kept in sync here.
 function getFormDateValue() {
@@ -461,7 +542,7 @@ function applyDatePicker() {
 }
 
 function clearForm() {
-  ['title', 'notes', 'background', 'receivers', 'hijriDate', 'shamsiDate', 'dayOfWeek']
+  ['title', 'senderName', 'background', 'closing', 'receivers', 'hijriDate', 'shamsiDate', 'dayOfWeek']
     .concat(AZAN_FIELDS)
     .forEach((f) => { document.getElementById('f_' + f).value = ''; });
   setFormDateValue('');
@@ -472,15 +553,18 @@ function clearForm() {
   AZAN_CHECKBOX_IDS.forEach((id) => { document.getElementById(id).checked = false; });
   state.outlineRows = [{ time: '', topic: '', location: '' }];
   state.linkRows = [{ text: '', url: '' }];
+  state.notesRows = [{ text: '' }];
   renderLinkRows();
   renderOutlineRows();
+  renderNotesRows();
 }
 
 function fillForm(ev) {
   setFormDateValue(ev.date || '');
   document.getElementById('f_title').value = ev.title || '';
-  document.getElementById('f_notes').value = ev.notes || '';
+  document.getElementById('f_senderName').value = ev.senderName || '';
   document.getElementById('f_background').value = ev.background || '';
+  document.getElementById('f_closing').value = ev.closing || '';
   document.getElementById('f_receivers').value = ev.receivers || '';
   document.getElementById('f_hijriDate').value = ev.hijriDate || '';
   document.getElementById('f_shamsiDate').value = ev.shamsiDate || '';
@@ -499,6 +583,9 @@ function fillForm(ev) {
   state.linkRows = parseLinks(ev.links || '');
   if (!state.linkRows.length) state.linkRows = [{ text: '', url: '' }];
   renderLinkRows();
+  state.notesRows = parseRecommendations(ev.notes || '');
+  if (!state.notesRows.length) state.notesRows = [{ text: '' }];
+  renderNotesRows();
 }
 
 // Uses the Tehran-method calculation in prayer-times.js for the configured location.
@@ -587,9 +674,11 @@ function buildEventFromForm() {
   return {
     date: getFormDateValue(),
     title: document.getElementById('f_title').value,
+    senderName: document.getElementById('f_senderName').value,
     outline: serializeOutline(state.outlineRows),
-    notes: document.getElementById('f_notes').value,
+    notes: serializeRecommendations(state.notesRows),
     background: document.getElementById('f_background').value,
+    closing: document.getElementById('f_closing').value,
     links: serializeLinks(state.linkRows),
     receivers: document.getElementById('f_receivers').value,
     hijriDate: document.getElementById('f_hijriDate').value,
@@ -652,6 +741,19 @@ async function createDraft() {
   try {
     await createGmailDraft(state.activeRow);
     showToast('پیش‌نویس ساخته شد — پوشه پیش‌نویس‌های جیمیل را بررسی کنید (Draft created — check Gmail Drafts)');
+  } catch (err) {
+    onError(err);
+  }
+}
+
+// Bypasses Gmail's compose UI (which doesn't reliably preserve the calendar
+// invite part when a draft is later edited/sent by hand), so use this if
+// "Add to calendar" isn't showing up after sending a draft normally.
+async function sendDirectly() {
+  if (!confirm('این ایمیل مستقیماً برای گیرندگان ارسال می‌شود. این کار قابل بازگشت نیست. مطمئن هستید؟ (This will send the email directly to recipients right now. This cannot be undone. Are you sure?)')) return;
+  try {
+    await sendGmailMessage(state.activeRow);
+    showToast('ایمیل ارسال شد (Email sent)');
   } catch (err) {
     onError(err);
   }
